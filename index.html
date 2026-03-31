@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Vocab Finder</title>
+  
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Vocab Finder">
+  
+  <!-- 預設的質感圖示，確保您加入主畫面時有漂亮的 Icon -->
+  <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2232/2232688.png">
+  <link rel="icon" href="https://cdn-icons-png.flaticon.com/512/2232/2232688.png">
+
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-stone-200">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useRef, useEffect } = React;
+
+    const IconBookMarked = ({ size = 24, className = '', strokeWidth = 2 }) => (
+      <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/><polyline points="10 2 10 10 13 7 16 10 16 2"/></svg>
+    );
+    const IconAlertCircle = ({ size = 24, className = '', strokeWidth = 2 }) => (
+      <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>
+    );
+    const IconBookOpen = ({ size = 24, className = '', strokeWidth = 2 }) => (
+      <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+    );
+    const IconLayers = ({ size = 24, className = '', strokeWidth = 2 }) => (
+      <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+    );
+    const IconType = ({ size = 24, className = '', strokeWidth = 2 }) => (
+      <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" x2="15" y1="20" y2="20"/><line x1="12" x2="12" y1="4" y2="20"/></svg>
+    );
+    const IconArrowLeft = ({ size = 24, className = '', strokeWidth = 2 }) => (
+      <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+    );
+    const IconLoader2 = ({ size = 24, className = '', strokeWidth = 2 }) => (
+      <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+    );
+    const IconChevronDown = ({ size = 24, className = '', strokeWidth = 2 }) => (
+      <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+    );
+
+    function App() {
+      const [view, setView] = useState('search'); 
+      const [loadingText, setLoadingText] = useState('');
+      const [word, setWord] = useState('');
+      const [mode, setMode] = useState('meanings'); 
+      const [language, setLanguage] = useState('en'); 
+      
+      const [rawResults, setRawResults] = useState([]); 
+      const [results, setResults] = useState([]); 
+      const [cachedTranslation, setCachedTranslation] = useState({ word: '', mode: '', data: [] }); 
+
+      const [error, setError] = useState('');
+      const [translationError, setTranslationError] = useState(false); 
+      const [searchedWord, setSearchedWord] = useState('');
+      const scrollRef = useRef(null);
+      const [showScrollHint, setShowScrollHint] = useState(false);
+
+      useEffect(() => {
+        if (view === 'search') setLanguage('en');
+      }, [view]);
+
+      const handleSearch = async () => {
+        const trimmed = word.trim().toLowerCase();
+        if (!trimmed) return setError("請輸入單字。");
+        if (trimmed.split(/\s+/).length > 1) return setError("請輸入單個字彙。");
+
+        setError(''); setTranslationError(false); setSearchedWord(trimmed); setRawResults([]);
+        setView('loading'); setLoadingText(mode === 'meanings' ? 'Consulting dictionary...' : `Retrieving all ${mode}...`);
+
+        try {
+          const res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${trimmed}`);
+          if (!res.ok) {
+            setError("字典中找不到這個單字。"); setView('search'); return;
+          }
+
+          const data = await res.json();
+          let finalResults = [];
+
+          if (mode === 'meanings') {
+            data.forEach(entry => entry.meanings.forEach(m => m.definitions.forEach(d => 
+              finalResults.push({ item: trimmed, partOfSpeech: m.partOfSpeech, definition: d.definition })
+            )));
+          } else {
+            let relatedWords = [];
+            data.forEach(entry => entry.meanings.forEach(m => {
+              if (mode === 'synonyms') relatedWords.push(...(m.synonyms || []));
+              if (mode === 'antonyms') relatedWords.push(...(m.antonyms || []));
+              m.definitions.forEach(d => {
+                if (mode === 'synonyms') relatedWords.push(...(d.synonyms || []));
+                if (mode === 'antonyms') relatedWords.push(...(d.antonyms || []));
+              });
+            }));
+            relatedWords = [...new Set(relatedWords)];
+
+            if (relatedWords.length === 0) { setError(`找不到相關的 ${mode}。`); setView('search'); return; }
+
+            const fetchDefinitions = relatedWords.map(async (relatedWord) => {
+              try {
+                const r = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${relatedWord}`);
+                if (r.ok) {
+                  const d = await r.json();
+                  return { item: relatedWord, partOfSpeech: d[0].meanings[0].partOfSpeech, definition: d[0].meanings[0].definitions[0].definition };
+                }
+              } catch (e) { return null; } return null;
+            });
+            const fetchedResults = await Promise.all(fetchDefinitions);
+            finalResults = fetchedResults.filter(r => r !== null);
+          }
+
+          if (finalResults.length > 0) setRawResults(finalResults);
+          else { setError(`無法取得 ${mode} 的定義。`); setView('search'); }
+        } catch (err) { setError("網路異常，請重試。"); setView('search'); }
+      };
+
+      // ==========================================
+      // 【全新升級】使用 GET 模式繞過手機阻擋
+      // ==========================================
+      const translateTextWithGoogle = async (text, retries = 3) => {
+        const encodedText = encodeURIComponent(text); // 將句子編碼成網址格式
+        for (let i = 0; i < retries; i++) {
+          try {
+            // 改用 GET 請求，這在 iPhone 上幾乎不會被擋
+            const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=zh-TW&dt=t&q=${encodedText}`;
+            const response = await fetch(url);
+            if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
+            const data = await response.json();
+            return data[0].map(item => item[0]).join(''); 
+          } catch (err) {
+            if (i === retries - 1) return text; 
+            await new Promise(r => setTimeout(r, 800 * (i + 1))); // 稍微拉長重試間隔保護網路
+          }
+        }
+      };
+
+      useEffect(() => {
+        if (rawResults.length === 0) return;
+        let isCancelled = false;
+
+        const translateAndDisplay = async () => {
+          setTranslationError(false);
+          if (language === 'en') {
+            if (!isCancelled) { setResults(rawResults); setView('results'); checkScroll(); }
+            return;
+          }
+
+          if (cachedTranslation.word === searchedWord && cachedTranslation.mode === mode && cachedTranslation.data.length > 0) {
+            if (!isCancelled) { setResults(cachedTranslation.data); setView('results'); checkScroll(); }
+            return;
+          }
+
+          if (!isCancelled) { setView('loading'); setLoadingText('準備翻譯中...'); }
+
+          try {
+            let translatedArray = [];
+            for (let i = 0; i < rawResults.length; i++) {
+              if (isCancelled) break;
+              if (!isCancelled) setLoadingText(`穩定翻譯中... (${i + 1}/${rawResults.length})`);
+              const item = rawResults[i];
+              const translatedDef = await translateTextWithGoogle(item.definition);
+              translatedArray.push({ ...item, definition: translatedDef });
+              await new Promise(r => setTimeout(r, 200));
+            }
+            if (!isCancelled) {
+              setCachedTranslation({ word: searchedWord, mode: mode, data: translatedArray });
+              setResults(translatedArray); setView('results'); checkScroll();
+            }
+          } catch (err) {
+            if (!isCancelled) { setResults(rawResults); setTranslationError(true); setView('results'); checkScroll(); }
+          }
+        };
+
+        translateAndDisplay();
+        return () => { isCancelled = true; };
+      }, [rawResults, language]);
+
+      const checkScroll = () => {
+        setTimeout(() => { if (scrollRef.current && scrollRef.current.scrollHeight > scrollRef.current.clientHeight) setShowScrollHint(true); }, 300);
+      };
+      const handleKeyDown = (e) => { if (e.key === 'Enter') handleSearch(); };
+      const handleScroll = () => { if (showScrollHint) setShowScrollHint(false); };
+
+      const LanguageToggle = () => (
+        <div className="flex items-center bg-stone-200/80 rounded-md p-1 border border-stone-300 shadow-inner backdrop-blur-sm">
+          <button onClick={() => setLanguage('en')} className={`text-[11px] font-bold px-3 py-1 rounded transition-all duration-300 ${language === 'en' ? 'bg-white shadow text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}>EN</button>
+          <button onClick={() => setLanguage('zh')} className={`text-[11px] font-bold px-3 py-1 rounded transition-all duration-300 ${language === 'zh' ? 'bg-white shadow text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}>中文</button>
+        </div>
+      );
+
+      return (
+        <div className="min-h-[100dvh] bg-stone-200 flex justify-center items-center font-sans text-slate-800 selection:bg-slate-300 overflow-hidden sm:p-6">
+          <div className="w-full h-[100dvh] sm:max-w-md sm:h-[85vh] sm:min-h-[700px] bg-stone-50 sm:rounded-lg sm:shadow-xl overflow-hidden flex relative sm:border border-stone-300">
+            
+            {view === 'search' && (
+              <div className="absolute inset-0 flex flex-col p-8 animate-in fade-in duration-300 bg-stone-50 z-10">
+                <div className="absolute top-safe right-6 z-20 pt-4">
+                  <LanguageToggle />
+                </div>
+
+                <div className="mt-[15vh] mb-10 text-center flex flex-col items-center">
+                  <div className="inline-flex items-center justify-center w-14 h-14 bg-slate-700 text-stone-50 rounded-md shadow-md mb-6">
+                    <IconBookMarked size={28} strokeWidth={1.5} />
+                  </div>
+                  <h1 className="text-3xl font-bold tracking-tight text-slate-800 font-serif">Vocab Finder</h1>
+                  <p className="text-slate-500 mt-2 font-medium text-sm">Comprehensive Dictionary Search</p>
+                </div>
+
+                <div className="flex-1 space-y-7 min-h-0">
+                  <div className="relative group">
+                    <input type="text" value={word} onChange={(e) => setWord(e.target.value)} onKeyDown={handleKeyDown} placeholder="Enter a word..." className="w-full pl-4 pr-10 py-3.5 bg-white border border-stone-300 rounded-md text-lg focus:outline-none focus:ring-1 focus:ring-slate-500 focus:border-slate-500 transition-all placeholder:text-stone-400 text-slate-800 shadow-sm" autoComplete="off" />
+                    {word && (
+                      <button onClick={() => { setWord(''); setError(''); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-slate-600 p-2 transition-colors">✕</button>
+                    )}
+                  </div>
+
+                  {error && (
+                    <div className="flex items-center text-red-700 bg-red-50/80 p-3 rounded-md text-sm font-medium border border-red-200 animate-in slide-in-from-top-1">
+                      <IconAlertCircle size={16} className="mr-2 flex-shrink-0" />{error}
+                    </div>
+                  )}
+
+                  <div className="space-y-3 pt-2">
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider block mb-2">Select Search Mode</label>
+                    <div className="grid grid-cols-3 gap-3">
+                      <button onClick={() => setMode('meanings')} className={`flex flex-col items-center justify-center py-4 px-2 rounded-md border transition-all duration-200 ${mode === 'meanings' ? 'border-slate-600 bg-slate-200 text-slate-800 shadow-sm' : 'border-stone-200 bg-white text-slate-500'}`}>
+                        <IconBookOpen size={20} className="mb-2" strokeWidth={1.5} /><span className="text-xs font-semibold tracking-wide">Meanings</span>
+                      </button>
+                      <button onClick={() => setMode('synonyms')} className={`flex flex-col items-center justify-center py-4 px-2 rounded-md border transition-all duration-200 ${mode === 'synonyms' ? 'border-slate-600 bg-slate-200 text-slate-800 shadow-sm' : 'border-stone-200 bg-white text-slate-500'}`}>
+                        <IconLayers size={20} className="mb-2" strokeWidth={1.5} /><span className="text-xs font-semibold tracking-wide">Synonyms</span>
+                      </button>
+                      <button onClick={() => setMode('antonyms')} className={`flex flex-col items-center justify-center py-4 px-2 rounded-md border transition-all duration-200 ${mode === 'antonyms' ? 'border-slate-600 bg-slate-200 text-slate-800 shadow-sm' : 'border-stone-200 bg-white text-slate-500'}`}>
+                        <IconType size={20} className="mb-2" strokeWidth={1.5} /><span className="text-xs font-semibold tracking-wide">Antonyms</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-auto pt-6 pb-6">
+                  <button onClick={handleSearch} className="w-full bg-slate-700 text-stone-50 font-semibold text-base py-4 rounded-md shadow-md transition-all active:scale-[0.99] flex items-center justify-center border border-slate-800">
+                    Search <IconArrowLeft size={18} className="ml-2 rotate-180" />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {view === 'loading' && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center space-y-5 animate-in fade-in duration-300 bg-stone-50 z-10">
+                <IconLoader2 size={42} className="text-slate-600 animate-spin" strokeWidth={2} />
+                <p className="text-base font-medium text-slate-600 tracking-wide text-center px-4">{loadingText}</p>
+              </div>
+            )}
+
+            {view === 'results' && (
+              <div className="absolute inset-0 flex flex-col bg-stone-100 animate-in slide-in-from-right-4 duration-300 z-10">
+                <div className="flex-none bg-stone-50 border-b border-stone-300 px-5 py-4 flex items-center justify-between shadow-sm z-20 pt-safe">
+                  <div className="flex items-center">
+                    <button onClick={() => setView('search')} className="p-1.5 -ml-1.5 text-slate-600 rounded-md mr-2">
+                      <IconArrowLeft size={20} strokeWidth={2} />
+                    </button>
+                    <h2 className="font-semibold text-slate-800 capitalize tracking-wide text-sm">{mode}</h2>
+                  </div>
+                  <LanguageToggle />
+                </div>
+
+                {translationError && language === 'zh' && (
+                  <div className="bg-red-50 text-red-600 text-[13px] px-4 py-2 border-b border-red-200 flex items-center">
+                    <IconAlertCircle size={14} className="mr-2" />翻譯不完全，部分顯示原文。
+                  </div>
+                )}
+
+                <div ref={scrollRef} onScroll={handleScroll} className="flex-1 min-h-0 overflow-y-auto px-4 pb-20 pt-8 custom-scrollbar bg-stone-100 touch-pan-y">
+                  <div className="mb-10 text-center border-b border-stone-300 pb-8">
+                    <h1 className="text-4xl font-bold text-slate-800 font-serif capitalize tracking-tight break-words">{searchedWord}</h1>
+                    <p className="mt-4 text-xs font-medium text-slate-500 uppercase tracking-widest">總計: {results.length}</p>
+                  </div>
+
+                  <div className="space-y-4">
+                    {results.map((res, index) => (
+                      <div key={index} className="bg-white p-5 rounded-md shadow-sm border border-stone-200">
+                        <div className="flex items-center flex-wrap gap-3 mb-2.5">
+                          <h3 className="text-xl font-bold text-slate-800 capitalize font-serif">{res.item}</h3>
+                          <span className="px-2 py-0.5 bg-stone-100 border border-stone-200 text-slate-500 rounded text-[11px] font-semibold tracking-wider uppercase">{res.partOfSpeech}</span>
+                        </div>
+                        <p className={`text-slate-600 leading-relaxed ${language === 'zh' ? 'text-base font-medium' : 'text-[15px]'}`}>{res.definition}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {showScrollHint && (
+                  <div className="absolute bottom-8 left-1/2 -translate-x-1/2 bg-slate-800/90 backdrop-blur-sm text-stone-50 px-4 py-2 rounded-full shadow-lg flex items-center gap-2 animate-bounce pointer-events-none z-30 text-sm">
+                    <span>往下滑動</span><IconChevronDown size={16} />
+                  </div>
+                )}
+
+                <style dangerouslySetInnerHTML={{__html: `
+                  .custom-scrollbar::-webkit-scrollbar { display: none; }
+                  .pt-safe { padding-top: max(1rem, env(safe-area-inset-top)); }
+                  .top-safe { top: max(1rem, env(safe-area-inset-top)); }
+                `}} />
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
+
+
